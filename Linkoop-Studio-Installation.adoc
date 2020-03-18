@@ -1,0 +1,531 @@
+:numbered:
+:toc:
+:toclevels: 5
+
+= Linkoop Studio安装说明
+
+== Studio依赖组件
+安装Studio时需要的组件为：
+
+. Centos 7.4操作系统（推荐）
+
+. java 1.8（推荐）
+
+. Studio完整安装包
+
+. LinkoopDB 数据库 (推荐与Studio版本一致)
+
+. 集群节点监控node_exporter (1.7版本)
+
+. prometheus 监控组件(与LinkoopDB共用)
+
+. pushgateway 监控组件(与LinkoopDB共用)
+
+. LINKOOPDB_MONITOR 监控组件
+
+. anaconda 机器学习组件
+
+. LDBDIST 跨节点文件系统组件
+
+. Solr 元数据管理组件
+
+
+== Studio安装目录结构说明
+
+. 安装目录为/home/db_user/studio
+
+. 配置文件目录为/home/db_user/studio/studio_current/conf
+
+. 启动停止命令目录为/home/db_user/studio/studio_current/bin
+
+. studio日志存放目录为/home/db_user/studio/studio_log
+
+. solr存放元数据目录/home/db_user/studio/datasets
+
+. 监控组件安装目录为/home/db_user/monitor
+
+. studio系统目录为/home/db_user/linkoopdb/dist(该目录与db的ldb-dist服务的目录保持一致）
+
+== Studio环境准备
+
+[source，shell]
+----
+adduser db_user
+usermod -a -G hdfs db_user
+su - db_user
+# studio 安装目录
+mkdir -p /home/db_user/studio
+# studio 日志存放目录
+mkdir  /home/db_user/studio/studio_log
+# studio系统目录
+mkdir  /home/db_user/studio/ldb-dist
+# solr的数据目录
+mkdir  /home/db_user/studio/datasets
+# 监控安装目录
+mkdir /home/db_user/monitor
+# others目录是存放依赖的软件包及组件
+mkdir  /home/db_user/linkoopdb/others
+
+----
+
+[TIP]
+====
+建议使用 db_user 用户进行后续操作。others目录是存放依赖的软件包及组件
+====
+
+== 上传并解压studio安装包
+
+上传LinkoopDB的安装包linkoopdb-studio-1.0.0.100-20180410.tar.gz到/home/db_user/studio目录下
+
+[source，shell]
+----
+cd /home/db_user/studio
+tar -zxvf linkoopdb-studio-2.1.0.100-20180410.tar.gz
+----
+
+
+== 创建studio连接
+
+[source，shell]
+----
+cd /home/db_user/studio
+ln -s linkoopdb-studio-1.0.0.100-20180410 studio_current
+----
+
+== 组件安装
+
+=== 安装LDBDIST
+
+==== 配置
+进入到db的配置文件目录并配置ldb-env.sh
+[source，shell]
+----
+vi /home/db_user/linkoopdb/linkoopdb_current/conf/ldb-env.sh
+----
+
+[source，shell]
+----
+## ldbdist目录,需要提前创建
+export LDBDIST_SERVER_FILE_DIR=/home/db_user/linkoopdb/dist
+
+## ldbdist访问端口
+export LDBDIST_SERVER_PORT=54322
+export LDBDIST_ROOT_DIR=${LDBDIST_SERVER_FILE_DIR}
+
+----
+
+==== 启动
+
+[source，shell]
+----
+cd /home/db_user/linkoopdb/linkoopdb_current
+bin/ldb-dist.sh start
+----
+
+[TIP]
+====
+ LDBDIST指向的目录为STUDIO的系统目录路径
+====
+
+=== 安装Solr
+
+上传solr的安装包solr-5.3.2.tgz到/home/db_user/linkoopdb/others目录下
+
+==== 解压
+
+[source，shell]
+----
+cd /home/db_user/linkoopdb/others
+tar -zxvf solr-5.3.2.tgz
+----
+
+[TIP]
+====
+必须使用我们提供的solr安装包。Solr是一个基于Lucene的Java搜索引擎服务器，是用来存放源数据的。
+====
+
+==== 建立solr链接
+
+[source，shell]
+----
+# 在solr目录中的configsets目录下创建repository连接
+ln -s /home/db_user/studio/studio_current/studio-database/repository/* /home/db_user/linkoopdb/others/solr-5.3.2/server/solr/configsets
+----
+
+==== 启动solr
+
+[source，shell]
+----
+cd /home/db_user/linkoopdb/others/solr-5.3.2
+
+bin/solr start -p 8983 -a "-Dsolr.data.dir=/home/db_user/studio/datasets"
+----
+
+[TIP]
+====
+首次安装studio,studio启动完毕后需用admin用户进行登录(初始化一些系统的schema以及表)
+====
+
+==== 停止solr
+
+[source，shell]
+----
+cd /home/db_user/linkoopdb/others/solr-5.3.2
+
+bin/solr stop
+----
+
+==== 访问solr
+
+通过在浏览器中输入：ip:port
+
+[source，shell]
+----
+可以通过浏览器访问http://node1:8983/solr/，观察是否跳转到Solr管理页面来确认slor是否正确启动了（8983是solr默认端口号）
+----
+
+
+== 监控安装
+
+=== 安装 node_exporter
+将node_exporter-0.17.0.linux-amd64.tar.gz上传至/home/db_user/monitor
+
+[TIP]
+====
+版本必须是1.7,集群的每台机器都需要安装
+====
+
+==== 解压
+
+[source，shell]
+----
+cd /home/db_user/monitor
+tar -zxvf node_exporter-0.17.0.linux-amd64.tar.gz
+----
+
+==== 启动node_exporter
+
+[source，shell]
+----
+cd /home/db_user/monitor/node_exporter
+./node_exporter &
+----
+
+
+=== 安装prometheus
+
+==== 解压并配置
+将prometheus-2.2.1.windows-amd64.tar.gz上传至/home/db_user/monitor
+
+[source，shell]
+----
+cd /home/db_user/monitor
+tar -zxvf prometheus-2.2.1.windows-amd64.tar.gz
+----
+
+[source，shell]
+----
+cd /home/db_user/monitor/prometheus-2.8.0.linux-amd64
+vi prometheus.yml
+
+global:
+  # 每一次metric读取时间间隔,可以采用默认值
+  scrape_interval:     15s
+  # Evaluate rules every 15 seconds. The default is every 1 minute.可以采用默认值
+  evaluation_interval: 15s
+scrape_configs:
+  # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
+  - job_name: 'prometheus'
+      static_configs:
+      - targets: ['192.168.1.74:9090']
+    - job_name: 'node1'
+      static_configs:
+      - targets: ['192.168.1.70:9100']
+    - job_name: 'pushgateway'
+      honor_labels: false
+      static_configs:
+      - targets: ['192.168.1.74:9091']
+    - job_name: 'node2'
+      static_configs:
+      - targets: ['192.168.1.71:9100']
+
+----
+
+[TIP]
+====
+与LINKOOPDB共用,无需再次安装
+====
+
+==== 访问prometheus
+
+[source，shell]
+----
+##默认端口是9090
+通过在浏览器中输入：192.168.1.74:9090
+----
+
+=== 安装pushgateway
+将pushgateway-0.8.0.linux-amd64.tar.gz包上传至/home/db_user/monitor
+
+==== 解压
+
+[source，shell]
+----
+cd /home/db_user/monitor
+tar -zxvf pushgateway-0.8.0.linux-amd64.tar.gz
+----
+
+==== 启动
+[source，shell]
+----
+cd /home/db_user/monitor/pushgateway
+./pushgateway --web.listen-address=":9091" --persistence.file="/home/...."
+----
+
+
+[TIP]
+====
+与LINKOOPDB共用,无需再次安装
+====
+
+
+==== 访问 pushgateway
+
+[source，shell]
+----
+## 默认端口是9091
+通过在浏览器中输入：ip:port
+----
+
+
+
+
+===  注册
+* 在prometheus的prometheus.yml文件进行node_exporter注册
+
+[source，shell]
+----
+cd /home/db_user/monitor/prometheus-2.8.0.linux-amd64
+vi prometheus.yml
+
+global:
+  # 每一次metric读取时间间隔,可以采用默认值
+  scrape_interval:     15s
+  # Evaluate rules every 15 seconds. The default is every 1 minute.可以采用默认值
+  evaluation_interval: 15s
+scrape_configs:
+  # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
+  - job_name: 'prometheus'
+      static_configs:
+      - targets: ['192.168.1.74:9090']
+    - job_name: 'node1'
+      static_configs:
+      - targets: ['192.168.1.70:9100']
+    - job_name: 'pushgateway'
+      honor_labels: false
+      static_configs:
+      - targets: ['192.168.1.74:9091']
+    - job_name: 'node2'
+      static_configs:
+      - targets: ['192.168.1.71:9100']
+
+----
+
+* 重启prometheus
+
+
+[TIP]
+====
+可通过访问prometheus WEB端,Status/Targets看node_exporter是否启动成功
+====
+
+
+== 配置studio
+
+=== studio-env.sh 配置
+
+只需要修改以下涉及到的参数，其他参数使用默认值即可。
+
+[source，shell]
+----
+编辑配置文件/home/db_user/studio/studio_current/conf/studio-env.sh
+
+vi /home/db_user/studio/studio_current/conf/studio-env.sh
+----
+
+[source，shell]
+----
+#!/usr/bin/env bash
+
+# 公共设置
+export LINKOOP_STUDIO_HOME=`cd $(dirname $0)/..; pwd`
+export LINKOOP_STUDIO_CONF=${LINKOOP_STUDIO_CONF:-${LINKOOP_STUDIO_HOME}/conf}
+export LINKOOP_STUDIO_LOGS_DIR=/home/db_user/studio/studio_log
+
+export LINKOOP_STUDIO_PROJECT_ID=default
+
+# LINKOOP DB SERVER 连接地址
+export LINKOOP_DB_JDBC_URL=jdbc:linkoopdb:tcp://node7:9127/ldb
+
+#anaconda包下的IPYTHON路径
+export LINKOOP_STUDIO_IPYTHON_COMMAND=/opt/anaconda3/bin/ipython
+
+# SOLR连接地址
+export LINKOOP_STUDIO_META_SOLR_URL='http://node7:8984/solr'
+
+# STUDIO HA MODE  studio启动模式,single为单机模式,ha为高可用模式
+export LINKOOP_STUDIO_SERVER_MODE=single
+
+# Prometheus 连接地址
+export LINKOOP_MONITOR_PROMETHEUS_SERVER='node7:9093'
+# PushGateway连接地址
+export LINKOOP_MONITOR_PUSHGATEWAY_SERVER='node7:9094'
+
+#ldbdist 在studio中内嵌服务
+export LINKOOP_DIST_SERVER_LIST='node7:54321'
+
+#Studio系统目录地址,如ldbdist是用到额目录, 文件上传下载等都使用此路径
+export LINKOOP_STUDIO_META_FILE=/home/db_user/linkoopdb/dist
+
+#studio server ip:port
+export LINKOOP_STUDIO_SERVER_LIST='node7:58510'
+export LINKOOP_STUDIO_WEBAPP_PARENT=${LINKOOP_STUDIO_HOME}/studio-ui
+
+#配置系统增量表存储引擎位置.HDFS存在HDFS,PALLAS存在PALLAS
+export LINKOOP_STUDIO_STORAGE_ENGINE=PALLAS
+
+# 是否需要初始化目录结构
+export LINKOOP_STUDIO_INIT_TREE=true
+
+# BASE SETTING
+export JAVA_HOME=/usr/java/jdk1.8.0_60
+----
+
+=== studio.properties配置
+
+以下参数如无特殊需要使用默认值即可。
+
+[source，shell]
+----
+编辑配置文件/home/db_user/studio/studio_current/conf/studio.properties
+
+vi /home/db_user/studio/studio_current/conf/studio.properties
+----
+
+[source，shell]
+----
+# solr
+linkoop.studio.solr.maxConnection=30
+linkoop.studio.solr.timeout=30
+#ldb datasource
+# 连接池配置，每个用户（不是全局）访问linkoopdb的数据库连接池最大连接数。如果一个用户提交的任务多，连接不够用，可适当调大此数值
+linkoop.db.maxactive=100
+# 每个用户的初始连接池中的连接数值
+linkoop.db.initialSize=5
+
+# 从linkoopdb数据库连接池中获取连接最长等待时间（单位是毫秒），如果错误信息表示没有可用连接，表示所有连接均已被占用，可调大等待时间，或者调大linkoop.db.maxactive。
+linkoop.db.maxWait=10000
+
+# table expire
+#过期策略线程扫描时间间隔(单位:秒)
+linkoop.studio.tbl.strategyWait=1
+
+# quartz schedule
+#  studio调度器的线程个数。涉及到任务调度，如果系统任务数量比较大，可调高此数值；如果任务量比较少，可调低此数值，减少资源占用。
+linkoop.studio.quartz.threadPool.threadCount=64
+
+# token过期时间设置
+linkoop.studio.security.token.expiration=3600
+#token是否需要拦截验证
+linkoop.studio.security.auth=true
+
+#免密登录指定用户名
+linkoop.studio.privacy.free.login=ADMIN
+----
+
+== 启动/停止Studio
+
+[source，shell]
+----
+cd /home/db_user/studio/studio_current
+bin/studio-server.sh start
+
+cd /home/db_user/studio/studio_current
+bin/studio-server.sh stop
+
+----
+
+== Studio 系统表初始化
+
+* studio 首次安装时，需要使用 ldb-client 执行初始化脚本
+脚本目录： cd /home/db_user/studio/studio_current/sql
+
+进入db client执行：
+
+    \i /home/db_user/studio/studio_current/sql/data-init-pallas.sql 
+    或者
+    \i /home/db_user/studio/studio_current/sql/data-init-default.sql
+
+[TIP]
+====
+ . pallas存储则执行pallas对应的脚本,否则执行default脚本
+
+ . sql初始化之后表存在于STUDIO_SCHEMA中,禁止操作此SCHEMA
+====
+
+
+== Linkoop Studio 访问
+
+ 浏览器输入"/home/db_user/studio/studio_current/conf/studio-env.sh"中配置的"LINKOOP_STUDIO_SERVER_LIST"地址进行访问
+
+ 默认管理员用户是:admin
+ 登录密码:123456
+
+
+== studio ha模式额外配置
+
+=== 配置studio-env.sh
+
+[source,java]
+----
+# 启动模式(ha为高可用模式，single为单机模式)
+linkoop.studio.server.mode: ha
+# 系统中的主机地址
+linkoop.studio.server.host: node1
+# 系统中的主机端口
+linkoop.studio.server.port: 18510 
+# 集群中的唯一端口号
+linkoop.studio.cluster.local.port: 6001
+
+# linkoopdb server集群所有节点的信息，格式为nodeid:host:clusterlocalport:serverport,nodeid:host:clusterlocalport:serverport
+linkoop.studio.cluster.nodelist: server1:localhost:6001:18510,server2:localhost:6002:18520,server3:localhost:6003:18530
+
+# linkoopdb server node节点名，在server集群中是唯一名，并且在下面配置的集群所有节点信息中需要有该nodeid对应的信息
+linkoop.studio.cluster.localmember.nodeid: server1
+----
+
+
+[TIP]
+====
+ 配置完成后将STUDIO_HOME拷贝三份到不同的位置（同一台机器伪分布式部署），或者拷贝到三台机器上， 并对应修改一下参数
+ linkoop.studio.server.host
+ linkoop.studio.server.port
+ linkoop.studio.cluster.local.port
+ linkoop.studio.cluster.localmember.nodeid
+====
+
+
+=== 启停ha模式
+
+分别进入到每个机器的studio home目录
+
+[source，shell]
+----
+cd /home/db_user/studio/studio_current
+bin/studio-server.sh start
+
+cd /home/db_user/studio/studio_current
+bin/studio-server.sh stop
+
+----
+
