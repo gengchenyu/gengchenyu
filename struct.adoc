@@ -1,0 +1,73 @@
+==== STRUCT
+
+DDL语法
+
+[source,sql]
+----
+CREATE TABLE test(id int,course struct<course:string,score:int>)
+----
+
+例:
+
+[source,sql]
+----
+CREATE TABLE test_struct_data_type(id int PRIMARY key,course struct<course:string,score:int>);
+insert into test_struct_data_type values(1, json_to_struct('{"course":60,"score":80}'));
+insert into test_struct_data_type values(2, json_to_struct('{"course":"!!!!!","score":1234567}'));
+select id,struct_to_json(test_struct_data_type.course) from test_struct_data_type order by id;
+----
+
+转换函数
+
+* json_to_struct(string x)
+
+[source,sql]
+----
+json_to_struct(string jsonStr,string structTypeStr)
+jsonStr : json串
+structTypeStr ：struct数据类型
+----
+
+例:
+
+[source,sql]
+----
+insert into test select 2, json_to_struct('{"course":"math","score":82}', 'course string, score int') from test_struct_data_type;
+----
+
+* struct_to_json(struct x)
+
+例:
+
+[source,sql]
+----
+select id,struct_to_json(test_struct_data_type.course) from test_struct_data_type order by id;
+----
+
+类型转换
+
+* CAST(col1 as struct)
+[source,sql]
+----
+支持从字符串CAST到Struct，等同于json_to_struct函数
+----
+
+* CAST(col1 as varchar(len)) 
+[source,sql]
+----
+支持从Struct CAST到字符串，等同于struct_to_json函数，并按len长度截断
+----
+
+注意：
+cast函数目前仅支持在insert & select语句中使用
+
+例:
+
+[source,sql]
+----
+CREATE TABLE test_struct_data_type_cast(course struct<score:struct<r:struct<num: double, r:int>,num: double>,name:string>, c1 string , id int);
+insert into test_struct_data_type_cast  values(cast('{"score":{"r":{"num":86.5,"r":3},"num":86.5},"name":"enghlish"}' as struct<score:struct<r:struct<num: double, r:int>,num: double>,name:string>), 'a', 1);
+insert into test_struct_data_type_cast select cast('{"score":{"r":{"num":86.5,"r":3},"num":86.5},"name":"math"}' as  struct<score:struct<r:struct<num: double, r:int>,num: double>,name:string>), cast(course as varchar(200)),2 from test_struct_data_type_cast limit 1;
+select 7, cast(course as varchar(200)) from test_struct_data_type_cast limit 1;
+select  cast(course as  struct<score:struct<r:struct<num: double, r:int>,num: double>,name:string>) from test_struct_data_type_cast limit 1;	
+----
